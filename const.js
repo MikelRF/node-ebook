@@ -1,4 +1,4 @@
-const env = require('env')
+const env = require('./env')
 let resUrl
 if (env === 'prod') {
     resUrl = 'http://47.111.252.196/'
