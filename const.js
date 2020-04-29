@@ -1,4 +1,11 @@
-const resUrl = 'http://192.168.3.2:81'
+const env = require('env')
+let resUrl
+if (env === 'prod') {
+    resUrl = 'http://47.111.252.196/'
+} else if (env === 'dev'){
+    resUrl = 'http://192.168.3.2:81'
+}
+
 const category = [
     'Biomedicine',
     'BusinessandManagement',
