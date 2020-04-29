@@ -9,10 +9,10 @@ app.use(cors())
 // 连接数据库
 function connect() {
     return mysql.createConnection({
-        host: 'localhost',
-        user: 'root',
-        password: 'root',
-        database: 'ebook'
+        host: constant.dbhost,
+        user: constant.dbUser,
+        password: constant.dbPwd,
+        database: constant.db
     })
 }
 
