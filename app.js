@@ -28,13 +28,6 @@ function randomArray(number, total) {
 // 获取图书
 function createData(results, key) {
     return handleData(results[key])
-    // const data = results[key]
-    // if (!data.cover.startsWith('http://')) {
-    //     data['cover'] = `${constant.resUrl}/img${data.cover}`
-    // }
-    // data['selected'] = false
-    // data['cache'] = false
-    // return data
 }
 
 function handleData(data) {
@@ -46,6 +39,56 @@ function handleData(data) {
     return data
 }
 
+function handleShelf(data) {
+    data.map(item => {
+        if (!item.cover.startsWith('http://')) {
+            item['cover'] = `${constant.resUrl}/img${item.cover}`
+        }
+        item.type = 1
+        item.selected = false
+        item.cache = false
+    })
+    return data
+}
+
+function extendList(data) {
+    var map = {}, dest = [];
+    for (var i = 0; i < data.length; i++) {
+        var ai = data[i];
+        if (!map[ai.shelfCategoryName]) {
+            dest.push({
+                shelfCategoryName: ai.shelfCategoryName,
+                type: 2,
+                itemList: [ai]
+            });
+            map[ai.shelfCategoryName] = ai;
+        } else {
+            for (var j = 0; j < dest.length; j++) {
+                var dj = dest[j];
+                if (dj.shelfCategoryName === ai.shelfCategoryName) {
+                    dj.itemList.push(ai);
+                    break;
+                }
+            }
+        }
+    }
+    let res = []
+    for (let i = 0; i < dest.length; i++) {
+        if (dest[i].shelfCategoryName === '') {
+            dest[i].itemList.forEach(v => res.push(v))
+        } else {
+            res.push(dest[i])
+        }
+    }
+    return res
+}
+
+function concatSql(sql, list) {
+    for (let i = 0; i < list.length - 1; i++) { //循环拼接sql
+        sql = sql + list[i] + `,`;
+    }
+    return sql + list[list.length - 1] + `)`;  //拼接结尾
+}
 // 获取N个分类
 function createCategoryIds(n) {
     const arr = []
@@ -415,7 +458,7 @@ app.get('/book/list', (req, res) => {
         })
 })
 
-app.get('/book/flat-list', (req, res) => {
+app.get('/book/flatList', (req, res) => {
     const conn = connect()
     conn.query('select * from book',
         (err, results) => {
@@ -569,7 +612,7 @@ app.get('/submit/comment', (req, res) => {
     })
 })
 
-app.get('/detail/comment-list', (req, res) => {
+app.get('/detail/commentList', (req, res) => {
     const conn = connect()
     const title = req.query.title
     const sql = `select * from comments where title = '${title}'`
@@ -590,6 +633,254 @@ app.get('/detail/comment-list', (req, res) => {
                     error_code: 0,
                     msg: '获取成功',
                     data: results
+                })
+            }
+        }
+        conn.end()
+    })
+})
+
+app.get('/shelf/addToShelf', (req, res) => {
+    const conn = connect()
+    const book = JSON.parse(req.query.book)
+    const userName = req.query.userName
+    const sql = `select * from bookshelf where username = '${userName}' and bookId = ${book.id}`
+    conn.query(sql, (err, results) => {
+        if (err) {
+            res.json({
+                error_code: 1,
+                msg: err
+            })
+        } else {
+            if (results && results.length > 0) {
+                res.json({
+                    error_code: 2,
+                    msg: '该书已在存在'
+                })
+            } else {
+                const sql1 = `INSERT INTO bookshelf (username, bookId, shelfCategoryName)
+    VALUES ('${userName}', ${book.id}, '${book.shelfCategoryName ? book.shelfCategoryName : ''}')`
+                conn.query(sql1, (err, results) => {
+                    if (err) {
+                        res.json({
+                            error_code: 1,
+                            msg: err
+                        })
+                    } else if (results && results.length === 0) {
+                        res.json({
+                            error_code: 2,
+                            msg: '加入失败'
+                        })
+                    } else {
+                        res.json({
+                            error_code: 0,
+                            msg: '加入成功'
+                        })
+                    }
+                })
+            }
+        }
+        conn.end()
+    })
+})
+
+app.get('/shelf/getBookShelf', (req, res) => {
+    const conn = connect()
+    const userName = req.query.userName
+    const sql = `SELECT bookId, shelfCategoryName, author, fileName, cover, title, publisher, category, categoryText, language, rootFile, score
+FROM bookshelf, book WHERE bookshelf.bookId = book.id and bookshelf.username = '${userName}'`
+    conn.query(sql, (err, results) => {
+        if (err) {
+            res.json({
+                error_code: 1,
+                msg: err
+            })
+        } else {
+            if (results && results.length === 0) {
+                res.json({
+                    error_code: 2,
+                    msg: '无收藏'
+                })
+            } else {
+                res.json({
+                    error_code: 0,
+                    msg: '获取成功',
+                    data: extendList(handleShelf(results))
+                })
+            }
+        }
+        conn.end()
+    })
+})
+
+app.get('/shelf/removeBookFromShelf', (req, res) => {
+    const conn = connect()
+    const list = req.query.list
+    const userName = req.query.userName
+    let sql = `DELETE FROM bookshelf WHERE username = '${userName}' and bookId in (`
+    sql = concatSql(sql,list)
+    conn.query(sql, (err, results) => {
+        if (err) {
+            res.json({
+                error_code: 1,
+                msg: err
+            })
+        } else {
+            if (results && results.length === 0) {
+                res.json({
+                    error_code: 2,
+                    msg: '删除失败',
+                })
+            } else {
+                res.json({
+                    error_code: 0,
+                    msg: '删除成功',
+                })
+            }
+        }
+        conn.end()
+    })
+})
+
+app.get('/shelf/getCategoryList', (req, res) => {
+    const conn = connect()
+    const shelfCategoryName = req.query.shelfCategoryName
+    const userName = req.query.userName
+    const sql = `SELECT bookId, shelfCategoryName, author, fileName, cover, title, publisher, category, categoryText, language, rootFile, score
+FROM bookshelf, book WHERE shelfCategoryName = '${shelfCategoryName}' and bookshelf.username = '${userName}' and book.id = bookshelf.bookId`
+    conn.query(sql, (err, results) => {
+        if (err) {
+            res.json({
+                error_code: 1,
+                msg: err
+            })
+        } else {
+            if (results && results.length === 0) {
+                res.json({
+                    error_code: 2,
+                    msg: '获取失败',
+                })
+            } else {
+                res.json({
+                    error_code: 0,
+                    msg: '获取成功',
+                    data: extendList(handleShelf(results))
+                })
+            }
+        }
+        conn.end()
+    })
+})
+
+app.get('/shelf/moveToGroup', (req, res) => {
+    const conn = connect()
+    const list = req.query.list
+    const userName = req.query.userName
+    const groupName = req.query.groupName
+    let sql = `UPDATE bookshelf SET shelfCategoryName = '${groupName}' WHERE username = '${userName}' and bookId in (`
+    sql = concatSql(sql, list)
+    conn.query(sql, (err, results) => {
+        if (err) {
+            res.json({
+                error_code: 1,
+                msg: err
+            })
+        } else {
+            if (results && results.length === 0) {
+                res.json({
+                    error_code: 2,
+                    msg: '分组失败',
+                })
+            } else {
+                res.json({
+                    error_code: 0,
+                    msg: '分组成功',
+                })
+            }
+        }
+        conn.end()
+    })
+})
+
+app.get('/shelf/moveOutOfGroup', (req, res) => {
+    const conn = connect()
+    const list = req.query.list
+    const userName = req.query.userName
+    let sql = `UPDATE bookshelf SET shelfCategoryName = '' WHERE username = '${userName}' and bookId in (`
+    sql = concatSql(sql,list)
+    conn.query(sql, (err, results) => {
+        if (err) {
+            res.json({
+                error_code: 1,
+                msg: err
+            })
+        } else {
+            if (results && results.length === 0) {
+                res.json({
+                    error_code: 2,
+                    msg: '移出分组失败',
+                })
+            } else {
+                res.json({
+                    error_code: 0,
+                    msg: '移出分组成功',
+                })
+            }
+        }
+        conn.end()
+    })
+})
+
+app.get('/shelf/changeGroupName', (req, res) => {
+    const conn = connect()
+    const newName = req.query.newName
+    const oldName = req.query.oldName
+    const userName = req.query.userName
+    const sql = `UPDATE bookshelf SET shelfCategoryName = '${newName}' WHERE username = '${userName}' and shelfCategoryName = '${oldName}'`
+    conn.query(sql, (err, results) => {
+        if (err) {
+            res.json({
+                error_code: 1,
+                msg: err
+            })
+        } else {
+            if (results && results.length === 0) {
+                res.json({
+                    error_code: 2,
+                    msg: '修改失败',
+                })
+            } else {
+                res.json({
+                    error_code: 0,
+                    msg: '修改成功',
+                })
+            }
+        }
+        conn.end()
+    })
+})
+
+app.get('/shelf/duplicateGroupName', (req, res) => {
+    const conn = connect()
+    const newName = req.query.newName
+    const userName = req.query.userName
+    const sql = `SELECT * FROM bookshelf where username = '${userName}' and shelfCategoryName = '${newName}'`
+    conn.query(sql, (err, results) => {
+        if (err) {
+            res.json({
+                error_code: 1,
+                msg: err
+            })
+        } else {
+            if (results && results.length > 0) {
+                res.json({
+                    error_code: 2,
+                    msg: '有重复',
+                })
+            } else {
+                res.json({
+                    error_code: 0,
+                    msg: '无重复',
                 })
             }
         }
